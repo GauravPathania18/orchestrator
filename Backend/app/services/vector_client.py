@@ -31,6 +31,15 @@ async def add_vector(vector: list[float], metadata: dict | None = None) -> Any:
 
 
 async def query_vector(vector: list[float], top_k: int = 5) -> Any:
+    """Call vector storage service's query_vector endpoint with a raw vector."""
+    payload = {"vector": vector, "top_k": top_k}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(f"{VECTOR_SERVICE_URL}/query_vector", json=payload, timeout=30.0)
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def query_vector(vector: list[float], top_k: int = 5) -> Any:
     """Query the vector service by raw vector."""
     payload = {"vector": vector, "top_k": top_k}
     async with httpx.AsyncClient() as client:
