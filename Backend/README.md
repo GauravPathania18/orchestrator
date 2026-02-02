@@ -326,7 +326,7 @@ taskkill /PID <PID> /F
 
 ## Collaboration Notes
 
-When merging with your friends' work:
+When merging work:
 1. Keep this Backend as the **central orchestrator**
 2. Integrate new services by adding client functions in `app/services/`
 3. Add new routes in `app/api/`
