@@ -335,6 +335,4 @@ When merging with your friends' work:
 
 ---
 
-**Built with ❤️ for your Personal LLM Project**
 
-For questions or updates, see the main project repository.
