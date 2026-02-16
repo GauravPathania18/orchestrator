@@ -35,19 +35,16 @@ env/
 env.bak/
 venv.bak/
 
-# Pytest
-.pytest_cache/
+# Runtime data
+chromas_store/
+*.db
+*.sqlite
+*.sqlite3
 
-# Coverage
-.coverage
-coverage.xml
-htmlcov/
-
-# mypy
-.mypy_cache/
-
-# IDEs and editors
+# IDE and editors
 .idea/
+.vscode/settings.json
+.vscode/launch.json
 .vscode/
 
 # macOS / Windows

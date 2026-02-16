@@ -1,4 +1,5 @@
-import logging, json
+import json
+import logging
 import httpx
 from .utils import normalize_metadata
 from .vector_store import vector_store
@@ -34,7 +35,7 @@ FALLBACK_METADATA = {
 # - qwen2.5:1.5b
 # - phi-2
 
-METADATA_MODEL = "llama3.2:1b"
+METADATA_MODEL = "gemma3:1b"
 
 # -------------------------
 # STRICT PROMPT
@@ -101,7 +102,7 @@ async def generate_metadata(text: str) -> dict:
                     "prompt": METADATA_PROMPT + text[:1000],
                     "stream": False
                 },
-                timeout=30
+                timeout=10
             )
             resp.raise_for_status()
 
@@ -120,13 +121,16 @@ async def generate_metadata(text: str) -> dict:
 
             return validate_metadata(parsed)
 
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logging.warning(f"[Metadata] Ollama not available - using fallback metadata. Error: {type(e).__name__}")
+            return FALLBACK_METADATA
         except Exception as e:
-            logging.error(f"[Metadata] Ollama failed: {e}", exc_info=True)
+            logging.warning(f"[Metadata] Error generating metadata: {e}. Using fallback.")
             return FALLBACK_METADATA
 
-# -------------------------
-# BACKGROUND TASK (NO THREADS)
-# -------------------------
+# -----------------------------------------
+# BACKGROUND TASK TO UPDATE CHROMA METADATA
+# -----------------------------------------
 
 async def update_metadata_in_chroma(doc_id: str, text: str):
     try:
@@ -143,10 +147,7 @@ async def update_metadata_in_chroma(doc_id: str, text: str):
         old_meta = existing["metadatas"][0] if existing["metadatas"] else {}
         merged_meta = {**old_meta, **metadata}
 
-        vector_store.collection.update(
-            ids=[doc_id],
-            metadatas=[merged_meta]
-        )
+        vector_store.update_metadata(doc_id, merged_meta)
 
         logging.info(f"✅ Metadata updated for {doc_id}")
 

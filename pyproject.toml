@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "personal-llm-rag"
+version = "0.1.0"
+description = "Personal LLM RAG System with Vector Storage"
+dependencies = [
+    "fastapi>=0.95.0",
+    "uvicorn[standard]>=0.22.0",
+    "pydantic>=1.10.0",
+    "chromadb>=0.3.21",
+    "httpx>=0.24.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "beautifulsoup4>=4.12.2",
+    "sentence-transformers>=2.7.0",
+    "numpy>=1.26.2",
+    "huggingface-hub>=0.20.0"
+]
+
+[tool.pyright]
+pythonVersion = "3.12"
+venv = ".venv"
+extraPaths = [
+    "Backend/app",
+    "VECTOR_STORAGE_SERVICE/app",
+    "personal_LLM_embedder"
+]
+
+[tool.pytest.ini_options]
+pythonPath = "."
+testpaths = ["tests"]

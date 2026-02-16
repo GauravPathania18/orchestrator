@@ -1,10 +1,8 @@
 from app.services.vector_client import query_text, add_text, add_vector, query_vector
 from app.services.embedding_client import get_embedding
-from app.services.rag_pipeline import __name__
-import asyncio
 
 
-def _extract_top_docs(vector_response: dict, top_k: int = 5) -> list:
+def _extract_top_docs(vector_response: dict, top_k: int = 3) -> list:
     """Normalize vector service response into a list of top documents with scores."""
     # vector_response expected shape: {"status":"success","results": {...chroma query result...}}
     payload = vector_response.get("results") if isinstance(vector_response, dict) and "results" in vector_response else vector_response
@@ -73,15 +71,17 @@ async def run_rag(message: str, session_id: str | None = None, top_k: int = 5) -
 
     # 5) optional LLM composition (stub)
     answer = await _compose_answer(message, top_docs)
-
+    
     return {
-        "query": message,
-        "session_id": session_id,
-        "embedding_dim": len(embedding) if embedding else None,
-        "stored": store_resp,
-        "retrieved": top_docs,
-        "answer": answer,
+    "query": message,
+    "session_id": session_id,
+    "retrieval": {
+        "top_k": top_k,
+        "results": top_docs,
+    },
+    "answer": answer,
     }
+
 
 
 async def store_memory(text: str, metadata: dict | None = None) -> dict:

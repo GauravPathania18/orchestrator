@@ -48,15 +48,19 @@ async def add_text(req: TextRequest, background_tasks: BackgroundTasks):
 @router.get("/vectors")
 async def list_vectors():
     items = vector_store.collection.get()
+    ids = items.get("ids") or []
+    documents = items.get("documents") or []
+    metadatas = items.get("metadatas") or []
+    
     return {
         "status": "success",
         "results": [
             {
-                "id": items["ids"][i],
-                "document": items["documents"][i],
-                "metadata": items["metadatas"][i]
+                "id": ids[i] if i < len(ids) else None,
+                "document": documents[i] if i < len(documents) else None,
+                "metadata": metadatas[i] if i < len(metadatas) else {}
             }
-            for i in range(len(items["ids"]))
+            for i in range(len(ids))
         ]
     }
 
@@ -65,14 +69,14 @@ async def list_vectors():
 # QUERY TEXT (EMBED + SEARCH)
 # -------------------------
 @router.post("/query_text")
-def query_text(req: QueryRequest):
+async def query_text(req: QueryRequest):
     try:
         query_vec = get_embedding(req.query)
 
         # temporary safe defaults (until intent router)
         results = vector_store.search(
             query_vector=query_vec,
-            top_k=req.top_k or 5,
+            top_k=req.top_k or 3,
             domain="general",
             entity_type=None
         )
@@ -99,6 +103,10 @@ async def add_vector(req: SearchRequest):
 
         metadata = getattr(req, "metadata", {}) if hasattr(req, "metadata") else {}
         metadata = normalize_metadata(metadata)
+        
+        # Ensure metadata is not empty (ChromaDB requirement)
+        if not metadata:
+            metadata = {"source": "external_vector", "timestamp": str(__import__('datetime').datetime.now())}
 
         # allow optional text in metadata
         doc_id = vector_store.store_vector(req.vector, metadata)

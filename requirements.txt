@@ -1,0 +1,21 @@
+# Consolidated requirements for Personal LLM RAG System
+# Install with: pip install -r requirements.txt
+
+# Core FastAPI dependencies
+fastapi>=0.95.0
+uvicorn[standard]>=0.22.0
+pydantic>=1.10.0
+
+# Vector storage and embedding
+chromadb>=0.3.21
+httpx>=0.24.0
+requests>=2.31.0
+
+# Utilities
+python-dotenv>=1.0.0
+beautifulsoup4>=4.12.2
+
+# ML/Embedding dependencies
+sentence-transformers>=2.7.0
+numpy>=1.26.2
+huggingface-hub>=0.20.0

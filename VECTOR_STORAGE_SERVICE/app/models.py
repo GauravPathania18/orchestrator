@@ -8,8 +8,8 @@ class TextRequest(BaseModel):
 
 class SearchRequest(BaseModel):
     vector: List[float]
-    top_k: Optional[int] = 5
+    top_k: Optional[int] = 3
 
 class QueryRequest(BaseModel):
     query: str
-    top_k: Optional[int] = 5
+    top_k: Optional[int] = 3
