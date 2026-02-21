@@ -9,6 +9,10 @@ from .utils import normalize_metadata
 from .embedder import VECTOR_DIMENSION
 
 
+# -------------------------
+# VECTOR STORE
+# -------------------------
+
 class VectorStore:
     def __init__(self, expected_dimension: int = VECTOR_DIMENSION):
         if expected_dimension is None:
@@ -19,7 +23,6 @@ class VectorStore:
         self.expected_dimension = expected_dimension
 
         logging.info(f"🔒 VectorStore initialized with dimension {self.expected_dimension}")
-
 
     # -------------------------
     # STORE VECTOR (UNCHANGED)
@@ -79,7 +82,7 @@ class VectorStore:
 
 
     # -----------------------------------
-    # QDRANT-LIKE SEARCH (CHROMA-CORRECT)
+    # SEARCH WITH CONFIDENCE + SIMILARITY THRESHOLD
     # -----------------------------------
     def search(
         self,
@@ -87,7 +90,8 @@ class VectorStore:
         top_k: int = 3,
         domain: Optional[str] = None,
         entity_type: Optional[str] = None,
-        min_confidence: float = 0.6
+        min_confidence: float = 0.6,
+        max_distance: float = 0.5,  # similarity threshold
     ):
         if len(query_vector) != self.expected_dimension:
             raise ValueError(
@@ -108,11 +112,56 @@ class VectorStore:
         # Chroma requires EXACTLY one top-level operator
         where = {"$and": filters} if len(filters) > 1 else (filters[0] if filters else None)
 
-        return self.collection.query(
+        results = self.collection.query(
             query_embeddings=[query_vector],
             n_results=top_k,
             where=where  # type: ignore
         )
+
+        # Post-filter by distance threshold
+        filtered = {
+            "ids": [],
+            "documents": [],
+            "metadatas": [],
+            "distances": []
+        }
+
+        # Get results with proper null checks
+        ids_list = results.get("ids")
+        distances_list = results.get("distances")
+        documents_list = results.get("documents")
+        metadatas_list = results.get("metadatas")
+
+        # Check that all required lists exist and have elements
+        if ids_list and distances_list and documents_list and metadatas_list:
+            first_ids = ids_list[0]
+            first_distances = distances_list[0]
+            first_documents = documents_list[0]
+            first_metadatas = metadatas_list[0]
+            
+            if first_ids and first_distances and first_documents and first_metadatas:
+                for i, dist in enumerate(first_distances):
+                    if dist is not None and dist <= max_distance:
+                        filtered["ids"].append(first_ids[i])
+                        filtered["documents"].append(first_documents[i])
+                        filtered["metadatas"].append(first_metadatas[i])
+                        filtered["distances"].append(dist)
+
+        return filtered
+
+
+# -------------------------
+# SAFE LAZY INITIALIZATION
+# -------------------------
+
+_vector_store_instance: Optional[VectorStore] = None
+
+def get_vector_store(expected_dimension: int = VECTOR_DIMENSION) -> VectorStore:
+    global _vector_store_instance
+    if _vector_store_instance is None:
+        _vector_store_instance = VectorStore(expected_dimension)
+    return _vector_store_instance
+
 
 # Global instance - initialized with default VECTOR_DIMENSION
 vector_store = VectorStore(expected_dimension=VECTOR_DIMENSION)

@@ -1,12 +1,15 @@
 import json
 import logging
 import httpx
+from typing import Dict, Any
+
 from .utils import normalize_metadata
-from .vector_store import vector_store
+from .vector_store import get_vector_store
 from ..config import OLLAMA_URL
+from .embedder import VECTOR_DIMENSION
 
 # -------------------------
-# STRICT METADATA CONTRACT
+# STRICT CONTRACT
 # -------------------------
 
 ALLOWED_DOMAINS = {"movies", "sports", "tech", "general"}
@@ -27,26 +30,10 @@ FALLBACK_METADATA = {
     "confidence": 0.0
 }
 
-# -------------------------
-# LIGHTWEIGHT MODEL (1–2B)
-# -------------------------
-# Good options:
-# - llama3.2:1b
-# - qwen2.5:1.5b
-# - phi-2
-
 METADATA_MODEL = "gemma3:1b"
 
-# -------------------------
-# STRICT PROMPT
-# -------------------------
-
 METADATA_PROMPT = """
-You are a metadata classification system.
-
 Return ONLY valid JSON.
-Do NOT include explanations.
-Do NOT add extra fields.
 
 Schema:
 {
@@ -57,13 +44,11 @@ Schema:
   "confidence": number between 0 and 1
 }
 
-If unsure, use "unknown" and low confidence.
-
 TEXT:
 """
 
 # -------------------------
-# VALIDATOR (NON-ML)
+# VALIDATOR
 # -------------------------
 
 def validate_metadata(raw: dict) -> dict:
@@ -83,13 +68,15 @@ def validate_metadata(raw: dict) -> dict:
 
         raw["entity_name"] = raw.get("entity_name", "").strip() or "unknown"
         raw["confidence"] = confidence
+
         return raw
 
     except Exception:
         return FALLBACK_METADATA
 
+
 # -------------------------
-# ASYNC METADATA GENERATION
+# GENERATE METADATA
 # -------------------------
 
 async def generate_metadata(text: str) -> dict:
@@ -113,7 +100,8 @@ async def generate_metadata(text: str) -> dict:
             try:
                 parsed = json.loads(raw_output)
             except json.JSONDecodeError:
-                start, end = raw_output.find("{"), raw_output.rfind("}")
+                start = raw_output.find("{")
+                end = raw_output.rfind("}")
                 if start != -1 and end != -1:
                     parsed = json.loads(raw_output[start:end + 1])
                 else:
@@ -121,35 +109,54 @@ async def generate_metadata(text: str) -> dict:
 
             return validate_metadata(parsed)
 
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logging.warning(f"[Metadata] Ollama not available - using fallback metadata. Error: {type(e).__name__}")
-            return FALLBACK_METADATA
         except Exception as e:
-            logging.warning(f"[Metadata] Error generating metadata: {e}. Using fallback.")
+            logging.warning(f"[Metadata] Failed → fallback used: {e}")
             return FALLBACK_METADATA
 
-# -----------------------------------------
-# BACKGROUND TASK TO UPDATE CHROMA METADATA
-# -----------------------------------------
+
+# -------------------------
+# MERGE STRATEGY
+# -------------------------
+
+def merge_metadata(old: Any, new: Any) -> Any:
+    """
+    Simple strategy:
+    - Higher confidence wins
+    - Otherwise keep old
+    """
+    if new.get("confidence", 0) >= old.get("confidence", 0):
+        return {**old, **new}
+    return old
+
+
+# -------------------------
+# BACKGROUND UPDATE
+# -------------------------
 
 async def update_metadata_in_chroma(doc_id: str, text: str):
     try:
-        logging.info(f"🧠 Generating metadata for {doc_id}")
+        vector_store = get_vector_store(VECTOR_DIMENSION)
 
         metadata = await generate_metadata(text)
         metadata = normalize_metadata(metadata)
 
-        existing = vector_store.collection.get(ids=[doc_id])
+        existing = vector_store.get_by_id(doc_id)
+
         if not existing["ids"]:
-            logging.warning(f"❌ Document {doc_id} not found")
+            logging.warning(f"Document {doc_id} not found")
             return
 
-        old_meta = existing["metadatas"][0] if existing["metadatas"] else {}
-        merged_meta = {**old_meta, **metadata}
+        # Get metadatas with proper null check
+        metadatas_list = existing.get("metadatas") or []
+        old_meta = metadatas_list[0] if metadatas_list else {}
+        merged = merge_metadata(old_meta, metadata)
+        
+        # ✅ Update status to completed
+        merged["status"] = "completed"
 
-        vector_store.update_metadata(doc_id, merged_meta)
+        vector_store.update_metadata(doc_id, merged)
 
-        logging.info(f"✅ Metadata updated for {doc_id}")
+        logging.info(f"Metadata updated for {doc_id}")
 
     except Exception as e:
-        logging.error(f"[Metadata Update] Failed for {doc_id}: {e}", exc_info=True)
+        logging.error(f"Metadata update failed: {e}", exc_info=True)

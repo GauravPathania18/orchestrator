@@ -12,6 +12,7 @@ import re          # Regular expressions for text cleaning
 import time        # To measure processing time
 from typing import List, Optional  # Type hints
 from contextlib import asynccontextmanager  # For FastAPI lifespan context
+from threading import Lock  # For thread-safe model loading 
 
 # ----------------- THIRD-PARTY LIBRARIES -----------------
 from fastapi import FastAPI, HTTPException  # Web framework and exception handling
@@ -34,10 +35,15 @@ HTML_STRIP = os.getenv("HTML_STRIP", "true").strip().lower() in ("1", "true", "y
  # Whether to strip HTML from text
 NORMALIZE = os.getenv("NORMALIZE", "true").strip().lower() in ("1", "true", "yes")
 
+MAX_CACHE_SIZE = 10000  # Prevent uncontrolled memory growth
+
 # ----------------- GLOBALS -----------------
 # Global variable to hold the loaded embedding model
 _model: Optional[SentenceTransformer] = None
 VECTOR_DIMENSION: Optional[int] = None  # Will be set after loading the model to avoid hardcoding
+
+_embedding_cache = {}
+_cache_lock = Lock()
 
 # Precompiled regex for simple HTML tag detection (fast path)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
@@ -52,11 +58,16 @@ async def lifespan(app: FastAPI):
     """
     global _model, VECTOR_DIMENSION
 
-    if EMBEDDING_MODE !="local":
-        raise ValueError("Currently only 'local' EMBEDDING_MODE is supported in this implementation.")
-    # Load the local embedding model
-    print(f"[Startup] Loading local embedding model: {LOCAL_MODEL} on device {DEVICE}")
-    _model = SentenceTransformer(LOCAL_MODEL, device=DEVICE)
+    if EMBEDDING_MODE != "local":
+        raise ValueError("Currently only 'local' EMBEDDING_MODE is supported.")
+
+    print(f"[Startup] Loading model: {LOCAL_MODEL} on device {DEVICE}")
+    _model = SentenceTransformer(
+        LOCAL_MODEL, 
+        device=DEVICE, 
+        model_kwargs={"attn_implementation": "eager"},
+        trust_remote_code=True
+    )
     
     # Set vector dimension based on the model's output
     # Dimension Locking: Ensure VECTOR_DIMENSION matches the model's output dimension to prevent mismatches
@@ -64,14 +75,17 @@ async def lifespan(app: FastAPI):
     VECTOR_DIMENSION = test_vector.shape[1]
     print(f"[Embedding] Vector dimension locked at {VECTOR_DIMENSION}")
 
-    yield  # FastAPI will run the app during this yield
-    # Optional shutdown/cleanup code can be added here
+    # Warm-up run
+    print("[Startup] Warming up model...")
+    _model.encode(["warm up run"], convert_to_numpy=True)
+
+    yield 
 
 # ----------------- FASTAPI APP -----------------
 # Initialize FastAPI app with custom lifespan
 app = FastAPI(
     title="Personal LLM Embedding Service",
-    version="2.0",
+    version="3.0",
     lifespan=lifespan
 )
 
@@ -100,12 +114,12 @@ class EmbedRequest(BaseModel):
     
     # ---- Model-level rule: enforce exactly one of text/texts ----
     @model_validator(mode="after")
-    def check_texts_not_empty(self):
+    def check_not_empty(self):
         """
         Ensure `texts` exists and has at least one non-empty string.
         """
         if not self.texts or all(len(s) == 0 for s in self.texts):
-            raise ValueError("At least one non-empty string is required in 'texts'.")
+            raise ValueError("At least one non-empty string is required.")
         return self
 
 class EmbedBatchResponse(BaseModel):
@@ -154,32 +168,46 @@ def _embed_local(texts: List[str]) -> List[List[float]]:
     """
     if _model is None:
         raise HTTPException(status_code=500, detail="Embedding model not loaded.")
-    # Batch encode; convert_to_numpy gives np.float32 -> cast to Python list
-    #Generate embeddings and convert to list of lists for JSON serialization
-    raw_vectors = _model.encode(texts, convert_to_numpy=True)
 
-    # ----------------- DIMENSION ENFORCEMENT -----------------
-    if VECTOR_DIMENSION is None:
-        raise HTTPException(
-            status_code=500,
-            detail="Vector dimension not initialized."
-        )
-    
-    if raw_vectors.shape[1] != VECTOR_DIMENSION:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Embedding dimension mismatch detected. "
-                   f"Expected {VECTOR_DIMENSION}, got {raw_vectors.shape[1]}."
-        )
-    
-    # Optional normalization
-    if NORMALIZE:
-        norms = np.linalg.norm(raw_vectors, axis=1, keepdims=True)
-        norms[norms == 0] = 1
-        raw_vectors = raw_vectors / norms
+    cached_results = {}
+    uncached_texts = []
 
-    # Convert to Python list for JSON serialization
-    return raw_vectors.tolist()
+    # Separate cached vs uncached
+    with _cache_lock:
+        for text in texts:
+            if text in _embedding_cache:
+                cached_results[text] = _embedding_cache[text]
+            else:
+                uncached_texts.append(text)
+
+    # Batch encode uncached texts
+    if uncached_texts:
+        raw_vectors = _model.encode(uncached_texts, convert_to_numpy=True)
+
+        if VECTOR_DIMENSION is None:
+            raise HTTPException(status_code=500, detail="Vector dimension not initialized.")
+
+        if raw_vectors.shape[1] != VECTOR_DIMENSION:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Embedding dimension mismatch. "
+                       f"Expected {VECTOR_DIMENSION}, got {raw_vectors.shape[1]}"
+            )
+
+        if NORMALIZE:
+            norms = np.linalg.norm(raw_vectors, axis=1, keepdims=True)
+            norms[norms == 0] = 1
+            raw_vectors = raw_vectors / norms
+
+        with _cache_lock:
+            for text, vector in zip(uncached_texts, raw_vectors):
+                if len(_embedding_cache) >= MAX_CACHE_SIZE:
+                    _embedding_cache.clear()  # Simple protection strategy
+                vector_list = vector.tolist()
+                _embedding_cache[text] = vector_list
+                cached_results[text] = vector_list
+
+    return [cached_results[text] for text in texts]
 
 def _embed(texts: List[str]) -> List[List[float]]:
     """
@@ -200,11 +228,11 @@ def health():
     return {
         "status": "ok",
         "mode": EMBEDDING_MODE,
-        "model": LOCAL_MODEL if EMBEDDING_MODE == "local" else EMBEDDING_MODE,
-        "device": DEVICE if EMBEDDING_MODE == "local" else "cloud",
-        "html_strip": HTML_STRIP,
+        "model": LOCAL_MODEL,
+        "device": DEVICE,
         "vector_dimension": VECTOR_DIMENSION,
         "normalize": NORMALIZE,
+        "cache_size": len(_embedding_cache)
     }
 
 @app.post("/embed", response_model=EmbedBatchResponse)
@@ -215,26 +243,37 @@ async def embed(req: EmbedRequest):
     """
     if not req.texts:
         raise HTTPException(status_code=400, detail="No texts provided.")
-    
-    cleaned_texts: List[str] = [_clean(x) for x in req.texts if _clean(x)]
+
+    # Clean once (efficient)
+    cleaned_texts = []
+    for x in req.texts:
+        cleaned = _clean(x)
+        if cleaned:
+            cleaned_texts.append(cleaned)
 
     if not cleaned_texts:
-        raise HTTPException(status_code=400, detail="All inputs are empty after cleaning.")
+        raise HTTPException(status_code=400, detail="All inputs empty after cleaning.")
 
-    # Generate embeddings and measure processing time
     t0 = time.time()
     vectors = await run_in_threadpool(_embed, cleaned_texts)
     dt = time.time() - t0
 
-    if not vectors or not vectors[0]:
+    if not vectors:
         raise HTTPException(status_code=500, detail="Failed to generate embeddings.")
 
-    # Return full response
     return EmbedBatchResponse(
         mode=EMBEDDING_MODE,
-        model_name=(LOCAL_MODEL if EMBEDDING_MODE == "local" else EMBEDDING_MODE),
+        model_name=LOCAL_MODEL,
         vector_size=VECTOR_DIMENSION or 768,
         count=len(vectors),
         processing_time_sec=round(dt, 4),
         vectors=vectors,
     )
+
+# -------- Run the server --------
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    host = os.getenv("HOST", "0.0.0.0")
+    print(f"Starting Embedding Service on {host}:{port}")
+    uvicorn.run(app, host=host, port=port)

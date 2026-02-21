@@ -119,6 +119,58 @@ async def add_vector(req: SearchRequest):
 
 
 # -------------------------
+# SEMANTIC SEARCH
+# -------------------------
+@router.post("/semantic_search")
+async def semantic_search(req: QueryRequest):
+    """
+    Semantic search endpoint that returns results with similarity scores.
+    Converts cosine similarity (distance) to a 0-100% similarity score.
+    """
+    try:
+        query_vec = get_embedding(req.query)
+
+        results = vector_store.search(
+            query_vector=query_vec,
+            top_k=req.top_k or 5,
+            domain="general",
+            entity_type=None,
+            min_confidence=0.0,
+            max_distance=1.0
+        )
+
+        # Transform results with similarity scores
+        formatted_results = []
+        ids = results.get("ids", [])
+        documents = results.get("documents", [])
+        metadatas = results.get("metadatas", [])
+        distances = results.get("distances", [])
+
+        for i in range(len(ids)):
+            distance = distances[i] if i < len(distances) else 1.0
+            similarity_score = round((1 - distance) * 100, 2)
+            
+            formatted_results.append({
+                "id": ids[i],
+                "text": documents[i] if i < len(documents) else None,
+                "metadata": metadatas[i] if i < len(metadatas) else {},
+                "distance": distance,
+                "similarity_score": similarity_score
+            })
+
+        return {
+            "status": "success",
+            "query": req.query,
+            "results_count": len(formatted_results),
+            "results": formatted_results
+        }
+
+    except Exception as e:
+        logging.error(f"[VectorStore:semantic_search] Failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------------
 # QUERY BY VECTOR
 # -------------------------
 @router.post("/query_vector")

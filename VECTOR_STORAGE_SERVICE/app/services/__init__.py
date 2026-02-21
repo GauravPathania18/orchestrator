@@ -8,7 +8,7 @@ This module contains core vector storage functionality:
 - utils: Utility functions for text and data processing
 """
 
-from .vector_store import VectorStore, vector_store
+from .vector_store import VectorStore, vector_store, get_vector_store
 from .embedder import get_embedding
 from .metadata import generate_metadata, validate_metadata, update_metadata_in_chroma
 from .utils import clean_user_text, normalize_metadata
@@ -16,6 +16,7 @@ from .utils import clean_user_text, normalize_metadata
 __all__ = [
     "VectorStore",
     "vector_store",
+    "get_vector_store",
     "get_embedding",
     "generate_metadata",
     "validate_metadata",

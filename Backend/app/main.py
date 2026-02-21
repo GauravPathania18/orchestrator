@@ -1,6 +1,9 @@
 from fastapi import FastAPI
-from app.api.chat import router as chat_router
+from app.api.simple import router as simple_router
 
-app = FastAPI(title="RAG Orchestrator")
+app = FastAPI(
+    title="RAG Chat API",
+    description="Simplified RAG chat with automatic session management"
+)
 
-app.include_router(chat_router)
+app.include_router(simple_router, prefix="/api")

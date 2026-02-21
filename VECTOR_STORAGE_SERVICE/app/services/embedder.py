@@ -13,9 +13,9 @@ def get_embedding(text: str):
         resp = requests.post(EMBEDDER_URL, json=payload)
         resp.raise_for_status()
         data = resp.json()
-        if "items" not in data or not data["items"]:
+        if "vectors" not in data or not data["vectors"]:
             raise ValueError("No embeddings returned")
-        vector = data["items"][0]["vector"]
+        vector = data["vectors"][0]
         # Update VECTOR_DIMENSION if we receive a different size
         global VECTOR_DIMENSION
         if len(vector) != VECTOR_DIMENSION:

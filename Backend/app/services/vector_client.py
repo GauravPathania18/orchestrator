@@ -39,3 +39,11 @@ async def query_vector(vector: list[float], top_k: int = 3) -> Any:
         return resp.json()
 
 
+async def semantic_search(query: str, top_k: int = 5) -> Any:
+    """Call vector storage service's semantic_search endpoint with similarity scores."""
+    payload = {"query": query, "top_k": top_k}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(f"{VECTOR_SERVICE_URL}/semantic_search", json=payload, timeout=30.0)
+        resp.raise_for_status()
+        return resp.json()
+
