@@ -311,4 +311,4 @@ pytest
 
 ---
 
-**Built with ❤️ for the Personal LLM RAG System**
+**Built with ❤️**
