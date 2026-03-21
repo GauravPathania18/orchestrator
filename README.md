@@ -279,7 +279,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 
 ## Support
 
-For issues and feature requests, please use [GitHub Issues](https://github.com/GauravPathania18/personal-llm-rag/issues).
+For <strong>issues</strong> and feature requests, please use [GitHub Issues](https://github.com/GauravPathania18/personal-llm-rag/issues).
 
 ---
 
