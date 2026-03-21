@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from ..models import TextRequest, SearchRequest, QueryRequest
 from ..services.vector_store import vector_store
@@ -8,34 +9,56 @@ from ..services.utils import clean_user_text, normalize_metadata
 
 router = APIRouter()
 
+async def process_text_background(doc_id: str, text: str, clean_text: str):
+    """Background task to handle embedding and metadata generation."""
+    try:
+        # 1. Generate embedding
+        vector = get_embedding(clean_text)
+        
+        # 2. Update vector and initial metadata in Chroma
+        vector_store.collection.update(
+            ids=[doc_id],
+            embeddings=[vector]
+        )
+        
+        # 3. Generate and update advanced metadata (LLM based)
+        await update_metadata_in_chroma(doc_id, clean_text)
+        
+        logging.info(f"✅ Background processing complete for {doc_id}")
+    except Exception as e:
+        logging.error(f"❌ Background processing failed for {doc_id}: {e}", exc_info=True)
+
 # -------------------------
 # ADD TEXT
 # -------------------------
-@router.post("/add_text")
+@router.post("/store")
 async def add_text(req: TextRequest, background_tasks: BackgroundTasks):
     try:
         clean_text = clean_user_text(req.text)
         if not clean_text:
             raise HTTPException(status_code=400, detail="Input text empty after cleaning.")
 
-        vector = get_embedding(clean_text)
-
         # initial safe metadata
         metadata = req.metadata or {}
         metadata["text"] = req.text
-        metadata["status"] = "pending"
+        metadata["status"] = "processing"  # Changed from pending
         metadata = normalize_metadata(metadata)
 
-        doc_id = vector_store.store_vector(vector, metadata)
+        # Store with dummy vector (zeros) initially to get the ID
+        from ..services.embedder import VECTOR_DIMENSION
+        dummy_vector = [0.0] * VECTOR_DIMENSION
+        
+        doc_id = vector_store.store_vector(dummy_vector, metadata)
 
-        # ✅ async background task (NO THREADS)
-        background_tasks.add_task(update_metadata_in_chroma, doc_id, clean_text)
+        # ✅ async background task handles BOTH embedding and metadata
+        background_tasks.add_task(process_text_background, doc_id, req.text, clean_text)
 
         return {
             "status": "success",
             "id": doc_id,
             "text": req.text,
-            "metadata_status": "pending"
+            "message": "Text accepted for processing",
+            "metadata_status": "processing"
         }
 
     except Exception as e:
@@ -45,7 +68,7 @@ async def add_text(req: TextRequest, background_tasks: BackgroundTasks):
 # -------------------------
 # LIST VECTORS
 # -------------------------
-@router.get("/vectors")
+@router.get("/list")
 async def list_vectors():
     items = vector_store.collection.get()
     ids = items.get("ids") or []
@@ -68,7 +91,7 @@ async def list_vectors():
 # -------------------------
 # QUERY TEXT (EMBED + SEARCH)
 # -------------------------
-@router.post("/query_text")
+@router.post("/search")
 async def query_text(req: QueryRequest):
     try:
         query_vec = get_embedding(req.query)
@@ -94,7 +117,7 @@ async def query_text(req: QueryRequest):
 # -------------------------
 # ADD VECTOR (EXTERNAL EMBEDDING)
 # -------------------------
-@router.post("/add_vector")
+@router.post("/insert")
 async def add_vector(req: SearchRequest):
     """Accepts an external vector with optional metadata and stores it."""
     try:
@@ -121,7 +144,7 @@ async def add_vector(req: SearchRequest):
 # -------------------------
 # SEMANTIC SEARCH
 # -------------------------
-@router.post("/semantic_search")
+@router.post("/search/semantic")
 async def semantic_search(req: QueryRequest):
     """
     Semantic search endpoint that returns results with similarity scores.
@@ -173,7 +196,7 @@ async def semantic_search(req: QueryRequest):
 # -------------------------
 # QUERY BY VECTOR
 # -------------------------
-@router.post("/query_vector")
+@router.post("/lookup")
 async def query_vector(req: SearchRequest):
     """Accepts a raw vector and returns nearest neighbours."""
     try:

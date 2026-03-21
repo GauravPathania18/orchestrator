@@ -1,16 +1,31 @@
 """
 Simplified API with only essential endpoints.
 """
-from fastapi import APIRouter
-from app.schemas.chat import ChatRequest, MemoryRequest
-from app.services.rag_pipeline import run_rag_with_scores, store_memory
+from fastapi import APIRouter, Depends, Query
+from app.schemas.chat import ChatRequest, MemoryRequest, FeedbackRequest
+from app.services.enhanced_rag import run_enhanced_rag, store_memory_with_raptor
 from app.services.short_term_memory import session_manager
+from app.api.auth import get_current_user
+from app.services.memory.profile_builder import extract_user_profile
+from app.services.vector_client import add_text
+import logging
+from datetime import datetime
+import uuid
 
 router = APIRouter()
 
+@router.post("/feedback")
+async def feedback(req: FeedbackRequest, current_user: str = Depends(get_current_user)):
+    """
+    Store user feedback on a RAG response for evaluation.
+    """
+    logging.info(f"Feedback received from {current_user}: {req.dict()}")
+    # In a real app, store this in a database for RAGAS evaluation
+    return {"status": "success", "message": "Feedback received"}
+
 
 @router.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, current_user: str = Depends(get_current_user)):
     """
     Essential chat endpoint with automatic session management.
     
@@ -24,9 +39,38 @@ async def chat(req: ChatRequest):
         message=req.message,
         session_id=req.session_id  # If None, auto-manages
     )
-    
-    # Get response with RAG (searches both memories)
-    resp = await run_rag_with_scores(
+    # -----------------------------
+    # USER PROFILE EXTRACTION
+    # -----------------------------
+    try:
+        profile_memories = extract_user_profile(req.message)
+
+        for mem in profile_memories:
+            # Optional: filter very small / useless entries
+            if len(mem["value"].split()) < 5:
+                continue
+
+            await add_text(
+                text=mem["value"],
+                metadata={
+                    "id": str(uuid.uuid4()),
+                    "type": "profile",
+                    "category": mem["category"],
+                    "value": mem["value"],
+                    "confidence": 0.9,
+                    "importance": 0.9,
+                    "source": "user",
+                    "created_at": datetime.now().isoformat(),
+                    "last_accessed": datetime.now().isoformat(),
+                    "session_id": active_session_id
+                }
+            )
+
+    except Exception as e:
+        logging.warning(f"Profile extraction failed: {e}")
+
+    # Get response with Enhanced RAG (RAPTOR + fallback)
+    resp = await run_enhanced_rag(
         req.message, 
         session_id=active_session_id, 
         top_k=req.top_k or 5
@@ -47,14 +91,14 @@ async def chat(req: ChatRequest):
 
 
 @router.post("/memory")
-async def memory(req: MemoryRequest):
+async def memory(req: MemoryRequest, current_user: str = Depends(get_current_user)):
     """Store a memory/document into vector DB."""
     # Only include session_id in metadata if it's provided
     metadata = {}
     if req.session_id:
         metadata["session_id"] = req.session_id
     
-    res = await store_memory(req.text, metadata=metadata)
+    res = await store_memory_with_raptor(req.text, metadata=metadata)
     return {"status": "success", "data": res}
 
 

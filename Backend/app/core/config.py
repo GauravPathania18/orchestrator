@@ -9,5 +9,5 @@ EMBEDDING_SERVICE_URL = os.getenv(
 )
 VECTOR_SERVICE_URL = os.getenv(
     "VECTOR_SERVICE_URL",
-    "http://localhost:8003"
+    "http://localhost:8001"
 )

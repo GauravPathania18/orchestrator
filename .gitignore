@@ -2,8 +2,6 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
 
 # Distribution / packaging
@@ -25,6 +23,7 @@ pip-wheel-metadata/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Virtual environments
 .env
@@ -35,48 +34,74 @@ env/
 env.bak/
 venv.bak/
 
-# Runtime data
-chromas_store/
-*.db
-*.sqlite
-*.sqlite3
-
 # IDE and editors
 .idea/
 .vscode/settings.json
 .vscode/launch.json
-.vscode/
-
-# macOS / Windows
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
 
-# Logs and temporary files
-*.log
-logs/
-*.tmp
-*~
+# Testing
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+htmlcov/
 
 # Jupyter
 .ipynb_checkpoints
+*.ipynb
 
-# Node
-node_modules/
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
-# SQLite / ChromaDB stores (project-specific)
+# Ruff
+.ruff_cache/
+
+# Logs
+*.log
+logs/
+log/
+
+# Runtime data
+*.db
+*.sqlite
 *.sqlite3
+
+# ChromaDB stores (project-specific)
 chroma_store/
 VECTOR_STORAGE_SERVICE/chroma_store/
+*.chroma
 
-# Secrets and env files
+# Ollama data (if stored locally)
+ollama_data/
+
+# Node (if any frontend added)
+node_modules/
+
+# Secrets
 *.env
 .env.*
+!.env.example
 
-# Misc
-__pycache__/
-*.pyc
-
-# service-specific extras
+# Service-specific extras
 .cursorignore
 .cursorindexingignore
 .cursor/
+
+# Local development scripts
+*.local.sh
+*.local.ps1
+deploy.local.*

@@ -83,20 +83,20 @@ python run.py
 Or use uvicorn directly:
 
 ```powershell
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8003 --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 **Output** (when successful):
 ```
 INFO:     Application startup complete.
-INFO:     Uvicorn running on http://127.0.0.1:8003 (Press CTRL+C to quit)
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
 ```
 
 ### Access Interactive Docs
 
 Open your browser:
-- **Swagger UI** (recommended): http://127.0.0.1:8003/docs
-- **ReDoc**: http://127.0.0.1:8003/redoc
+- **Swagger UI** (recommended): http://127.0.0.1:8001/docs
+- **ReDoc**: http://127.0.0.1:8001/redoc
 
 ## API Endpoints
 
@@ -258,7 +258,7 @@ Open your browser:
 ### Store a Memory
 
 ```bash
-curl -X POST http://127.0.0.1:8003/add_text \
+curl -X POST http://127.0.0.1:8001/add_text \
   -H "Content-Type: application/json" \
   -d '{
     "text": "My favorite food is pizza",
@@ -272,7 +272,7 @@ curl -X POST http://127.0.0.1:8003/add_text \
 ### Query by Text
 
 ```bash
-curl -X POST http://127.0.0.1:8003/query_text \
+curl -X POST http://127.0.0.1:8001/query_text \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What is my favorite food?",
@@ -290,7 +290,7 @@ async def search_by_vector():
     
     async with httpx.AsyncClient() as client:
         resp = await client.post(
-            "http://127.0.0.1:8003/query_vector",
+            "http://127.0.0.1:8001/query_vector",
             json={"vector": vector, "top_k": 5},
             timeout=30.0
         )
@@ -301,7 +301,7 @@ async def search_by_vector():
 ### List All Memories
 
 ```bash
-curl http://127.0.0.1:8003/vectors
+curl http://127.0.0.1:8001/vectors
 ```
 
 ## Project Structure
@@ -377,7 +377,7 @@ Each stored vector includes metadata:
          ▼               ▼
 ┌──────────────────┐  ┌──────────────────────┐
 │  Embedder Svc    │  │ Vector Storage Svc   │
-│  (port 8000)     │  │  (port 8003)         │
+│  (port 8000)     │  │  (port 8001)         │
 │                  │  │                      │
 │  POST /embed     │  │  POST /add_text      │
 │  GET /           │  │  POST /add_vector    │

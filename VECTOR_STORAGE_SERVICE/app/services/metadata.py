@@ -1,6 +1,7 @@
 import json
 import logging
 import httpx
+import re
 from typing import Dict, Any
 
 from .utils import normalize_metadata
@@ -89,7 +90,7 @@ async def generate_metadata(text: str) -> dict:
                     "prompt": METADATA_PROMPT + text[:1000],
                     "stream": False
                 },
-                timeout=10
+                timeout=15
             )
             resp.raise_for_status()
 
@@ -97,13 +98,26 @@ async def generate_metadata(text: str) -> dict:
             if not raw_output:
                 return FALLBACK_METADATA
 
+            # Improved JSON extraction with regex
             try:
-                parsed = json.loads(raw_output)
+                # Find JSON block using regex to handle markdown backticks or leading/trailing text
+                json_match = re.search(r'\{.*\}', raw_output, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                    # Basic cleanup of common LLM artifacts
+                    json_str = json_str.replace('```json', '').replace('```', '')
+                    parsed = json.loads(json_str)
+                else:
+                    return FALLBACK_METADATA
             except json.JSONDecodeError:
+                # Fallback to the old method if regex fails but we have markers
                 start = raw_output.find("{")
                 end = raw_output.rfind("}")
                 if start != -1 and end != -1:
-                    parsed = json.loads(raw_output[start:end + 1])
+                    try:
+                        parsed = json.loads(raw_output[start:end + 1])
+                    except json.JSONDecodeError:
+                        return FALLBACK_METADATA
                 else:
                     return FALLBACK_METADATA
 

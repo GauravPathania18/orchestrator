@@ -2,6 +2,8 @@ from app.services.vector_client import query_text, add_text, add_vector, query_v
 from app.services.embedding_client import get_embedding
 from app.services.short_term_memory import session_manager
 from app.services.ollama_client import generate_response, create_rag_prompt
+from app.services.processor import semantic_chunk_text
+import uuid
 
 
 def _extract_top_docs(vector_response: dict, top_k: int = 3) -> list:
@@ -50,33 +52,63 @@ def _extract_semantic_results(semantic_response: dict, top_k: int = 5) -> list:
 
 
 def _search_short_term_memory(session_id: str, query: str, top_k: int = 5) -> list:
-    """Search short-term memory (session history) for matches."""
+    """Search short-term memory (session history) for relevant facts.
+    
+    Excludes the current query and only includes assistant responses or user messages 
+    that aren't just the current question.
+    """
     if not session_id:
         return []
     
-    # Get session history
     history = session_manager.get_session_history(session_id)
     if not history:
         return []
     
-    # Simple text search within the session
-    query_lower = query.lower()
+    query_lower = query.lower().strip()
     matches = []
     
-    for msg in history:
-        message_text = msg.get("message", "").lower()
-        # Check if query is contained in the message
-        if query_lower in message_text:
+    # We iterate in reverse to get most recent relevant context first
+    seen_messages = set()
+    for msg in reversed(history):
+        message_text = msg.get("message", "").strip()
+        message_lower = message_text.lower()
+        
+        # 1. Skip if it's the current query or very similar
+        # Using a more robust check for similarity
+        if message_lower == query_lower or query_lower in message_lower or message_lower in query_lower:
+            continue
+            
+        # 2. Skip if we've already included this exact text (deduplication)
+        if message_lower in seen_messages:
+            continue
+
+        # 3. CRITICAL: Only include if it's an assistant response (likely a fact)
+        # or a VERY long user message (which might contain context provided by user)
+        # We also check the role explicitly
+        role = msg.get("role")
+        if role == "user" and len(message_text.split()) < 15:
+            # Skip short user messages (usually questions)
+            continue
+            
+        if role not in ["assistant", "user"]:
+            continue
+            
+        # 4. Keyword relevance check
+        keywords = [w for w in query_lower.split() if len(w) > 3]
+        is_relevant = any(k in message_lower for k in keywords) if keywords else False
+        
+        if is_relevant:
+            seen_messages.add(message_lower)
             matches.append({
                 "id": f"stm_{msg.get('timestamp', 'unknown')}",
-                "document": msg.get("message"),
+                "document": message_text,
                 "metadata": {
-                    "role": msg.get("role"),
+                    "role": role,
                     "timestamp": msg.get("timestamp"),
                     "source": "short_term_memory"
                 },
-                "distance": 0.0,  # Exact match has 0 distance
-                "similarity_score": 100.0,  # Exact text match = 100%
+                "distance": 0.0,
+                "similarity_score": 90.0, 
             })
     
     return matches[:top_k]
@@ -93,11 +125,13 @@ async def _compose_answer(query: str, retrieved: list) -> str:
     Returns:
         Generated answer from Ollama
     """
-    if not retrieved:
-        return f"I don't have relevant memories for: {query}"
-    
-    # Create RAG prompt with context
-    prompt = create_rag_prompt(query, retrieved)
+    # Create RAG prompt with context if available, otherwise just use the query
+    if retrieved:
+        prompt = create_rag_prompt(query, retrieved)
+    else:
+        # If no relevant memories found, just send the query directly to Ollama
+        # to let it answer using its internal model weights.
+        prompt = query
     
     try:
         # Generate response from Ollama
@@ -109,6 +143,9 @@ async def _compose_answer(query: str, retrieved: list) -> str:
     except ConnectionError as e:
         # Fallback if Ollama is not available
         print(f"[RAG] Ollama not available: {e}")
+        if not retrieved:
+            return "I don't have relevant memories for this, and the LLM service is currently unavailable."
+        
         snippets = [r.get("document") or r.get("metadata", {}).get("text") for r in retrieved[:3]]
         snippets = [s for s in snippets if s]
         summary = " \n---\n ".join(snippets)
@@ -163,14 +200,32 @@ async def run_rag(message: str, session_id: str | None = None, top_k: int = 5) -
 
 
 async def store_memory(text: str, metadata: dict | None = None) -> dict:
-    """Store a memory/document into the vector service.
+    """Store a memory/document into the vector service with semantic chunking.
 
-    We currently forward the raw text and metadata to the vector service's
-    `/add_text` endpoint (which performs its own embedding). If you prefer
-    the orchestrator to compute embeddings and send vectors, we can extend
-    the vector service API to accept external vectors.
+    Splits the text into semantically coherent chunks before storing.
     """
-    return await add_text(text, metadata)
+    metadata = metadata or {}
+    doc_id = str(uuid.uuid4())
+    metadata["doc_id"] = doc_id
+    
+    # Perform semantic chunking
+    chunks = await semantic_chunk_text(text)
+    
+    results = []
+    for i, chunk in enumerate(chunks):
+        chunk_metadata = metadata.copy()
+        chunk_metadata["chunk_index"] = i
+        chunk_metadata["total_chunks"] = len(chunks)
+        
+        res = await add_text(chunk, chunk_metadata)
+        results.append(res)
+        
+    return {
+        "status": "success",
+        "doc_id": doc_id,
+        "chunks_processed": len(chunks),
+        "results": results
+    }
 
 
 async def run_rag_with_scores(message: str, session_id: str | None = None, top_k: int = 5) -> dict:

@@ -13,6 +13,13 @@ class MemoryRequest(BaseModel):
     session_id: Optional[str] = None
 
 
+class FeedbackRequest(BaseModel):
+    query: str
+    answer: str
+    is_helpful: bool
+    feedback_text: Optional[str] = None
+
+
 class ChatResponse(BaseModel):
     status: str
     data: dict
