@@ -420,6 +420,4 @@ async def get_embedding(text: str) -> list[float]:
 
 ---
 
-**Built with ❤️ for your Personal LLM Project**
-
 For questions or updates, see the main project repository.
