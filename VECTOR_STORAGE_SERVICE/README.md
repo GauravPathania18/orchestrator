@@ -438,7 +438,7 @@ ChromaDB database is locked. Restart the service.
 
 ---
 
-**Built with ❤️ for your Personal LLM Project**
+**Built with ❤️ **
 
 For questions or updates, see the main project repository.
 
