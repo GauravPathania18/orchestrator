@@ -8,13 +8,15 @@ from ..services.raptor_retriever import RaptorRetriever
 from ..services.reranker import Reranker
 from ..services.pipeline import RetrievalPipeline
 from ..services.vector_store import vector_store
+from ..config_manager import config_manager
 
 router = APIRouter()
 
 # Request/Response Models
 class IngestRequest(BaseModel):
     documents: List[str]
-    cluster_size: Optional[int] = 4
+    cluster_size: Optional[int] = None
+    chunk_size: Optional[int] = None
 
 class QueryRequest(BaseModel):
     query: str
@@ -50,7 +52,12 @@ async def ingest_documents(req: IngestRequest):
         raise HTTPException(status_code=400, detail="No documents provided")
     
     try:
-        builder = RaptorBuilder(vector_store, cluster_size=req.cluster_size or 4)
+        # Get config values (from request or fallback to config manager)
+        raptor_config = config_manager.get_raptor_config()
+        cluster_size = req.cluster_size or raptor_config.cluster_size
+        chunk_size = req.chunk_size or raptor_config.chunk_size
+        
+        builder = RaptorBuilder(vector_store, cluster_size=cluster_size, chunk_size=chunk_size)
         result = builder.ingest(req.documents)
         
         logging.info(f"✅ RAPTOR ingestion completed: {result}")

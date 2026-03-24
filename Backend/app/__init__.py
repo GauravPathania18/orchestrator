@@ -9,7 +9,7 @@ This is the main application package that coordinates between:
 """
 
 from app.core.config import EMBEDDING_SERVICE_URL, VECTOR_SERVICE_URL
-from app.api.chat import router as chat_router
+from app.api.simple import router as chat_router
 from app.schemas.chat import ChatRequest, MemoryRequest, ChatResponse
 
 __all__ = [

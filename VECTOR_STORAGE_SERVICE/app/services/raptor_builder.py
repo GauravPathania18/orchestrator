@@ -6,13 +6,24 @@ import numpy as np
 
 from .embedder import get_embedding
 from .vector_store import VectorStore
+from .chunker import TextChunker, ChunkingConfig
 
 
 class RaptorBuilder:
-    def __init__(self, vector_store: VectorStore, cluster_size: int = 4):
+    def __init__(self, vector_store: VectorStore, cluster_size: int = 4, chunk_size: int = 500):
         self.vector_store = vector_store
         self.cluster_size = cluster_size
-        logging.info(f"🌲 RaptorBuilder initialized with cluster_size={cluster_size}")
+        
+        # Initialize smart chunker with sentence awareness
+        chunking_config = ChunkingConfig(
+            max_chunk_size=chunk_size,
+            chunk_overlap=50,
+            min_chunk_size=50,
+            respect_sentences=True
+        )
+        self.chunker = TextChunker(chunking_config)
+        
+        logging.info(f"🌲 RaptorBuilder initialized with cluster_size={cluster_size}, chunk_size={chunk_size}")
 
     def ingest(self, documents: List[str]):
         """Main ingestion pipeline for RAPTOR hierarchical clustering"""
@@ -46,16 +57,9 @@ class RaptorBuilder:
             "num_clusters": len(set(clusters['labels']))
         }
 
-    def _chunk_documents(self, docs: List[str], size: int = 300) -> List[str]:
-        """Split documents into chunks of specified size"""
-        chunks = []
-        for doc in docs:
-            # Simple character-based chunking
-            for i in range(0, len(doc), size):
-                chunk = doc[i:i + size].strip()
-                if chunk:  # Only add non-empty chunks
-                    chunks.append(chunk)
-        return chunks
+    def _chunk_documents(self, docs: List[str]) -> List[str]:
+        """Split documents into semantically coherent chunks using sentence-based chunking."""
+        return self.chunker.chunk_documents(docs, strategy="sentences")
 
     def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Get embeddings for a list of texts"""

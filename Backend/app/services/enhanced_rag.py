@@ -8,7 +8,7 @@ from .raptor_client import raptor_client
 from .short_term_memory import session_manager
 from .ollama_client import generate_response
 from app.services.embedding_client import get_embedding
-
+from .vector_client import retrieve as vector_retrieve
 from app.services.memory.intent_classifier import classify_intent
 from app.services.memory.memory_scorer import compute_memory_score
 from app.services.memory.memory_selector import select_top_memories

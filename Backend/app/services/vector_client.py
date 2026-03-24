@@ -4,7 +4,6 @@ from typing import Any
 
 
 async def query_text(query: str, top_k: int = 3) -> Any:
-    """Call vector storage service's /search endpoint with a text query."""
     payload = {"query": query, "top_k": top_k}
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{VECTOR_SERVICE_URL}/search", json=payload, timeout=30.0)
@@ -13,7 +12,6 @@ async def query_text(query: str, top_k: int = 3) -> Any:
 
 
 async def add_text(text: str, metadata: dict | None = None) -> Any:
-    """Call vector storage service's /store endpoint to store a document."""
     payload = {"text": text, "metadata": metadata or {}}
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{VECTOR_SERVICE_URL}/store", json=payload, timeout=30.0)
@@ -22,7 +20,6 @@ async def add_text(text: str, metadata: dict | None = None) -> Any:
 
 
 async def add_vector(vector: list[float], metadata: dict | None = None) -> Any:
-    """Send an externally computed vector to the vector service's /insert endpoint."""
     payload = {"vector": vector, "metadata": metadata or {}}
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{VECTOR_SERVICE_URL}/insert", json=payload, timeout=30.0)
@@ -31,7 +28,6 @@ async def add_vector(vector: list[float], metadata: dict | None = None) -> Any:
 
 
 async def query_vector(vector: list[float], top_k: int = 3) -> Any:
-    """Call vector storage service's /lookup endpoint with a raw vector."""
     payload = {"vector": vector, "top_k": top_k}
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{VECTOR_SERVICE_URL}/lookup", json=payload, timeout=30.0)
@@ -40,10 +36,22 @@ async def query_vector(vector: list[float], top_k: int = 3) -> Any:
 
 
 async def semantic_search(query: str, top_k: int = 5) -> Any:
-    """Call vector storage service's /search/semantic endpoint with similarity scores."""
     payload = {"query": query, "top_k": top_k}
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{VECTOR_SERVICE_URL}/search/semantic", json=payload, timeout=30.0)
         resp.raise_for_status()
         return resp.json()
 
+
+# 🔥 NEW METHOD (IMPORTANT)
+async def retrieve(query: str, top_k: int = 5):
+    """Unified retrieval wrapper for evaluation"""
+
+    result = await semantic_search(query, top_k)
+
+    docs = result.get("results", [])
+
+    return [
+        {"text": d.get("text") or d.get("document")}
+        for d in docs
+    ]
