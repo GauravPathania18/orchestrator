@@ -24,7 +24,7 @@ services:
       - "8000:8000"
     environment:
       - PYTHONPATH=/app/embedder
-      - EMBEDDER_MODEL=all-MiniLM-L6-v2
+      - EMBEDDER_MODEL=all-mpnet-base-v2
     volumes:
       - ./personal_LLM_embedder:/app/embedder
     depends_on:

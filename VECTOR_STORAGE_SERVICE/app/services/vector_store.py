@@ -162,6 +162,5 @@ def get_vector_store(expected_dimension: int = VECTOR_DIMENSION) -> VectorStore:
         _vector_store_instance = VectorStore(expected_dimension)
     return _vector_store_instance
 
-
-# Global instance - initialized with default VECTOR_DIMENSION
-vector_store = VectorStore(expected_dimension=VECTOR_DIMENSION)
+# Module-level global removed to prevent double initialization on import
+# Always use get_vector_store() instead

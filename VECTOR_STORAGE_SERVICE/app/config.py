@@ -4,5 +4,7 @@ import os
 EMBEDDER_URL = os.getenv("EMBEDDER_URL", "http://localhost:8000/embed")
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:1b")
+
 PERSIST_DIR = os.getenv("PERSIST_DIR", "./chroma_store")
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "personal_llm")

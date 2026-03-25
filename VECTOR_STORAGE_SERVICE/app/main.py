@@ -1,18 +1,12 @@
-import requests
 import logging
 import httpx
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from .routes import vectors, raptor
-from .config import OLLAMA_URL
-
-app = FastAPI(
-    title="Vector Store Service",
-    version="1.2",
-    description="A microservice to store, retrieve, and search vectors in ChromaDB"
-)
+from .config import OLLAMA_URL, DEFAULT_MODEL
 
 # Required models for metadata and processing
-REQUIRED_MODELS = ["gemma3:1b"]
+REQUIRED_MODELS = [DEFAULT_MODEL]
 
 async def verify_ollama_models():
     """Check if required models are present in Ollama, pull if missing."""
@@ -39,12 +33,23 @@ async def verify_ollama_models():
     except Exception as e:
         logging.error(f"❌ Error verifying Ollama models: {e}")
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events."""
+    # Startup
     await verify_ollama_models()
+    yield
+    # Shutdown (if needed)
+
+app = FastAPI(
+    title="Vector Store Service",
+    version="1.2",
+    description="A microservice to store, retrieve, and search vectors in ChromaDB",
+    lifespan=lifespan
+)
 
 # Register routers
-app.include_router(vectors.router)
+app.include_router(vectors.router, prefix="/vectors", tags=["vectors"])
 app.include_router(raptor.router, prefix="/raptor", tags=["raptor"])
 
 @app.get("/")

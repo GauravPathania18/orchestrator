@@ -86,28 +86,38 @@ git clone https://github.com/GauravPathania18/personal-llm-rag.git
 cd personal-llm-rag
 ```
 
-2. **Create virtual environment**
+2. **Run setup script** (Windows)
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# or
-.venv\Scripts\Activate.ps1  # Windows
+setup.bat
 ```
 
-3. **Install dependencies**
+Or manually:
 ```bash
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+# or
+source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 ```
 
 4. **Configure environment**
 ```bash
 cp .env.example .env
-# Edit .env with your settings
+# Edit .env with your settings (ollama URL, ports, etc.)
 ```
 
 ### Running Locally
 
-Start each service in separate terminals:
+**Quick Start (Windows):**
+```bash
+start_services.bat
+```
+
+This opens 3 terminal windows with all services running on ports 8000-8002.
+
+**Manual Start:**
+
+Start each service in separate terminals (after activating .venv):
 
 **Terminal 1 - Embedding Service:**
 ```bash
@@ -193,6 +203,9 @@ personal-llm-rag/
 ├── nginx.conf              # Reverse proxy config
 ├── pyproject.toml          # Project metadata & dependencies
 ├── requirements.txt        # Root dependencies
+├── setup.bat               # One-click Windows setup
+├── start_services.bat      # Start all services (Windows)
+├── QUICKSTART.md           # Quick start guide
 ├── .env.example           # Environment template
 ├── .gitignore
 ├── LICENSE
@@ -244,8 +257,8 @@ ruff check .
 
 | Issue | Solution |
 |-------|----------|
-| Services won't start | Activate venv: `source .venv/bin/activate` (Linux/Mac) or `.venv\Scripts\Activate.ps1` (Windows) |
-| Import errors | Reinstall: `pip install -r requirements.txt` |
+| Services won't start | Run `setup.bat` first, then `start_services.bat` |
+| Import errors | Activate venv: `.venv\Scripts\activate` then reinstall: `pip install -r requirements.txt` |
 | Port conflicts | Check: `netstat -ano \| findstr :8000` (Windows) or `lsof -i :8000` (Linux/Mac) |
 | ChromaDB errors | Clear cache: `rm -rf chroma_store/` |
 | Ollama not responding | Verify Ollama is running: `ollama list` |

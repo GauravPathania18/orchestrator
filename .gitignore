@@ -35,14 +35,20 @@ env.bak/
 venv.bak/
 
 # IDE and editors
+.vscode/
 .idea/
-.vscode/settings.json
-.vscode/launch.json
 *.swp
 *.swo
 *~
 .DS_Store
 Thumbs.db
+
+# Model cache directories (sentence-transformers, huggingface)
+models/
+model_cache/
+.cache/
+~/.cache/
+transformers_cache/
 
 # Testing
 .tox/
@@ -104,4 +110,33 @@ node_modules/
 # Local development scripts
 *.local.sh
 *.local.ps1
+*.local.bat
 deploy.local.*
+
+# Windows specific
+*.exe
+*.dll
+*.pdb
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Coverage reports
+coverage/
+.coverage
+
+# Pytest
+.pytest_cache/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# pip
+pip-log.txt
+pip-delete-this-directory.txt

@@ -6,7 +6,7 @@ from typing import Dict, Any
 
 from .utils import normalize_metadata
 from .vector_store import get_vector_store
-from ..config import OLLAMA_URL
+from ..config import OLLAMA_URL, DEFAULT_MODEL
 from .embedder import VECTOR_DIMENSION
 
 # -------------------------
@@ -31,7 +31,7 @@ FALLBACK_METADATA = {
     "confidence": 0.0
 }
 
-METADATA_MODEL = "gemma3:1b"
+METADATA_MODEL = DEFAULT_MODEL
 
 METADATA_PROMPT = """
 Return ONLY valid JSON.

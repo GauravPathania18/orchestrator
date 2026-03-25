@@ -8,6 +8,8 @@ from typing import Dict, Any, Optional, Union
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .config import DEFAULT_MODEL
+
 @dataclass
 class ServiceConfig:
     """Configuration for individual services"""
@@ -43,7 +45,7 @@ class RaptorConfig:
     k_chunks: int = 10
     top_k_final: int = 5
     min_confidence: float = 0.0
-    max_distance: float = 1.0
+    max_distance: float = 1.5
     chunk_size: int = 300
 
 @dataclass
@@ -57,7 +59,7 @@ class RerankerConfig:
 class LLMConfig:
     """LLM service configuration"""
     url: str = "http://localhost:11434"
-    model: str = "gemma3:1b"
+    model: str = DEFAULT_MODEL
     temperature: float = 0.7
     max_tokens: int = 2048
 
@@ -153,8 +155,8 @@ class ConfigManager:
         if not (0.0 <= self.config.raptor.min_confidence <= 1.0):
             raise ValueError("Min confidence must be between 0.0 and 1.0")
         
-        if not (0.0 <= self.config.raptor.max_distance <= 1.0):
-            raise ValueError("Max distance must be between 0.0 and 1.0")
+        if not (0.0 <= self.config.raptor.max_distance <= 1.5):
+            raise ValueError("Max distance must be between 0.0 and 1.5")
         
         if not (0.0 <= self.config.llm.temperature <= 2.0):
             raise ValueError("LLM temperature must be between 0.0 and 2.0")

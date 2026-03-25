@@ -12,9 +12,14 @@ async def get_embedding(text: str) -> List[float]:
         resp.raise_for_status()
         data = resp.json()
 
-    # embedder returns EmbedBatchResponse with `vectors` (list of embedding vectors)
-    vectors = data.get("vectors") or []
-    if not vectors:
-        raise RuntimeError("Embedding service returned no vectors")
+    # Check standard contract status
+    if data.get("status") != "success":
+        error = data.get("error", {})
+        raise RuntimeError(error.get("message", "Embedding service failed"))
 
-    return vectors[0]
+    # Extract from data payload
+    items = data.get("data", {}).get("items") or []
+    if not items:
+        raise RuntimeError("Embedding service returned no items")
+
+    return items[0]["vector"]

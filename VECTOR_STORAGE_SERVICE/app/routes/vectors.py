@@ -2,10 +2,13 @@ import logging
 import asyncio
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from ..models import TextRequest, SearchRequest, QueryRequest
-from ..services.vector_store import vector_store
+from ..services.vector_store import get_vector_store
 from ..services.embedder import get_embedding
 from ..services.metadata import update_metadata_in_chroma
 from ..services.utils import clean_user_text, normalize_metadata
+from ..services.error_handler import handle_exception
+
+vector_store = get_vector_store()
 
 router = APIRouter()
 
@@ -32,6 +35,7 @@ async def process_text_background(doc_id: str, text: str, clean_text: str):
 # ADD TEXT
 # -------------------------
 @router.post("/store")
+@handle_exception
 async def add_text(req: TextRequest, background_tasks: BackgroundTasks):
     try:
         clean_text = clean_user_text(req.text)
@@ -55,20 +59,31 @@ async def add_text(req: TextRequest, background_tasks: BackgroundTasks):
 
         return {
             "status": "success",
-            "id": doc_id,
-            "text": req.text,
-            "message": "Text accepted for processing",
-            "metadata_status": "processing"
+            "data": {
+                "id": doc_id,
+                "text": req.text,
+                "message": "Text accepted for processing",
+                "metadata_status": "processing"
+            },
+            "error": None
         }
 
     except Exception as e:
         logging.error(f"[VectorStore] Failed: {e}", exc_info=True)
-        return {"status": "error", "message": str(e)}
+        return {
+            "status": "error",
+            "data": None,
+            "error": {
+                "message": str(e),
+                "code": "STORE_FAILED"
+            }
+        }
 
 # -------------------------
 # LIST VECTORS
 # -------------------------
 @router.get("/list")
+@handle_exception
 async def list_vectors():
     items = vector_store.collection.get()
     ids = items.get("ids") or []
@@ -77,14 +92,17 @@ async def list_vectors():
     
     return {
         "status": "success",
-        "results": [
-            {
-                "id": ids[i] if i < len(ids) else None,
-                "document": documents[i] if i < len(documents) else None,
-                "metadata": metadatas[i] if i < len(metadatas) else {}
-            }
-            for i in range(len(ids))
-        ]
+        "data": {
+            "results": [
+                {
+                    "id": ids[i] if i < len(ids) else None,
+                    "document": documents[i] if i < len(documents) else None,
+                    "metadata": metadatas[i] if i < len(metadatas) else {}
+                }
+                for i in range(len(ids))
+            ]
+        },
+        "error": None
     }
 
 
@@ -92,6 +110,7 @@ async def list_vectors():
 # QUERY TEXT (EMBED + SEARCH)
 # -------------------------
 @router.post("/search")
+@handle_exception
 async def query_text(req: QueryRequest):
     try:
         query_vec = get_embedding(req.query)
@@ -100,24 +119,35 @@ async def query_text(req: QueryRequest):
         results = vector_store.search(
             query_vector=query_vec,
             top_k=req.top_k or 3,
-            domain="general",
+            domain=None,  # Don't filter by domain for RAPTOR compatibility
             entity_type=None
         )
 
         return {
             "status": "success",
-            "query": req.query,
-            "results": results
+            "data": {
+                "query": req.query,
+                "results": results
+            },
+            "error": None
         }
 
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {
+            "status": "error",
+            "data": None,
+            "error": {
+                "message": str(e),
+                "code": "SEARCH_FAILED"
+            }
+        }
 
 
 # -------------------------
 # ADD VECTOR (EXTERNAL EMBEDDING)
 # -------------------------
 @router.post("/insert")
+@handle_exception
 async def add_vector(req: SearchRequest):
     """Accepts an external vector with optional metadata and stores it."""
     try:
@@ -134,7 +164,11 @@ async def add_vector(req: SearchRequest):
         # allow optional text in metadata
         doc_id = vector_store.store_vector(req.vector, metadata)
 
-        return {"status": "success", "id": doc_id}
+        return {
+            "status": "success",
+            "data": {"id": doc_id},
+            "error": None
+        }
 
     except Exception as e:
         logging.error(f"[VectorStore:add_vector] Failed: {e}", exc_info=True)
@@ -145,6 +179,7 @@ async def add_vector(req: SearchRequest):
 # SEMANTIC SEARCH
 # -------------------------
 @router.post("/search/semantic")
+@handle_exception
 async def semantic_search(req: QueryRequest):
     """
     Semantic search endpoint that returns results with similarity scores.
@@ -156,10 +191,10 @@ async def semantic_search(req: QueryRequest):
         results = vector_store.search(
             query_vector=query_vec,
             top_k=req.top_k or 5,
-            domain="general",
+            domain=None,  # Don't filter by domain for RAPTOR compatibility
             entity_type=None,
             min_confidence=0.0,
-            max_distance=1.0
+            max_distance=2.0
         )
 
         # Transform results with similarity scores
@@ -183,9 +218,12 @@ async def semantic_search(req: QueryRequest):
 
         return {
             "status": "success",
-            "query": req.query,
-            "results_count": len(formatted_results),
-            "results": formatted_results
+            "data": {
+                "query": req.query,
+                "results_count": len(formatted_results),
+                "results": formatted_results
+            },
+            "error": None
         }
 
     except Exception as e:
@@ -197,6 +235,7 @@ async def semantic_search(req: QueryRequest):
 # QUERY BY VECTOR
 # -------------------------
 @router.post("/lookup")
+@handle_exception
 async def query_vector(req: SearchRequest):
     """Accepts a raw vector and returns nearest neighbours."""
     try:
@@ -204,7 +243,11 @@ async def query_vector(req: SearchRequest):
             raise HTTPException(status_code=400, detail="`vector` must be a non-empty list of floats")
 
         results = vector_store.search(query_vector=req.vector, top_k=req.top_k or 5)
-        return {"status": "success", "query": None, "results": results}
+        return {
+            "status": "success",
+            "data": {"query": None, "results": results},
+            "error": None
+        }
 
     except Exception as e:
         logging.error(f"[VectorStore:query_vector] Failed: {e}", exc_info=True)

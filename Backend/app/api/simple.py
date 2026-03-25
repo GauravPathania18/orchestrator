@@ -21,7 +21,7 @@ async def feedback(req: FeedbackRequest, current_user: str = Depends(get_current
     """
     logging.info(f"Feedback received from {current_user}: {req.dict()}")
     # In a real app, store this in a database for RAGAS evaluation
-    return {"status": "success", "message": "Feedback received"}
+    return {"status": "success", "data": {"message": "Feedback received"}, "error": None}
 
 
 @router.post("/chat")
@@ -30,7 +30,7 @@ async def chat(req: ChatRequest, current_user: str = Depends(get_current_user)):
     Essential chat endpoint with automatic session management.
     
     - Auto-manages sessions (60min timeout)
-    - Uses gemma3:1b for responses
+    - Uses configured Ollama model for responses
     - Searches both short-term and long-term memory
     """
     # Get or create session (automatic time-based management)
@@ -85,8 +85,11 @@ async def chat(req: ChatRequest, current_user: str = Depends(get_current_user)):
     
     return {
         "status": "success", 
-        "data": resp,
-        "session_id": active_session_id
+        "data": {
+            "response": resp,
+            "session_id": active_session_id
+        },
+        "error": None
     }
 
 
@@ -99,13 +102,15 @@ async def memory(req: MemoryRequest, current_user: str = Depends(get_current_use
         metadata["session_id"] = req.session_id
     
     res = await store_memory_with_raptor(req.text, metadata=metadata)
-    return {"status": "success", "data": res}
+    return {"status": "success", "data": res, "error": None}
 
 
 @router.get("/session/current")
 async def get_current_session():
     """Get current active session."""
     current = session_manager.get_current_session()
-    if current:
-        return {"status": "success", "session_id": current}
-    return {"status": "success", "session_id": None}
+    return {
+        "status": "success", 
+        "data": {"session_id": current},
+        "error": None
+    }

@@ -5,7 +5,8 @@ def apply_decay(metadata: dict, decay_rate: float = 0.01) -> dict:
     Reduce importance over time.
     """
     importance = metadata.get("importance", 0.5)
-    timestamp = metadata.get("timestamp")
+    # Support both 'timestamp' and 'created_at' for backward compatibility
+    timestamp = metadata.get("timestamp") or metadata.get("created_at")
 
     if not timestamp:
         return metadata

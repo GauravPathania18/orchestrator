@@ -25,7 +25,7 @@ class RetrievalPipeline:
         top_k_final: int = 5,
         reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
         min_confidence: float = 0.0,
-        max_distance: float = 1.0
+        max_distance: float = 2.0
     ):
         """
         Initialize the retrieval pipeline
@@ -75,24 +75,88 @@ class RetrievalPipeline:
         logging.info(f"🎯 Running RetrievalPipeline for query: '{query[:50]}...'")
         
         try:
-            # Run with timeout protection
-            result = asyncio.run(self._run_async_with_timeout(
-                query, return_intermediate, return_scores, timeout
-            ))
-            return result
+            # Check if we're in an event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an event loop, use create_task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(self._run_sync, query, return_intermediate, return_scores, timeout)
+                    result = future.result(timeout=timeout)
+                return result
+            except RuntimeError:
+                # No event loop, use asyncio.run
+                result = asyncio.run(self._run_async_with_timeout(
+                    query, return_intermediate, return_scores, timeout
+                ))
+                return result
             
-        except asyncio.TimeoutError:
-            logging.error(f"⏰ Pipeline timeout after {timeout}s for query: {query[:50]}...")
+        except Exception as e:
+            logging.error(f"❌ Pipeline failed: {e}")
             return {
                 "context": "",
                 "query": query,
                 "num_retrieved": 0,
                 "num_final": 0,
-                "error": "timeout",
-                "timeout": timeout
+                "error": str(e)
             }
+
+    def _run_sync(
+        self, 
+        query: str, 
+        return_intermediate: bool, 
+        return_scores: bool,
+        timeout: float
+    ) -> Dict[str, Any]:
+        """Synchronous pipeline execution"""
+        try:
+            # Step 1: RAPTOR retrieval
+            retrieval_result = self.retriever.retrieve(query, self.k_summary, self.k_chunks, self.min_confidence, self.max_distance)
+            
+            # Combine summaries and chunks
+            combined_docs = retrieval_result["summaries"] + retrieval_result["chunks"]
+            logging.info(f"📚 Combined {len(retrieval_result['summaries'])} summaries + {len(retrieval_result['chunks'])} chunks = {len(combined_docs)} total docs")
+            
+            if not combined_docs:
+                logging.warning("⚠️  No documents retrieved from RAPTOR")
+                result = {
+                    "context": "",
+                    "query": query,
+                    "num_retrieved": 0,
+                    "num_final": 0
+                }
+                if return_intermediate:
+                    result["retrieval_result"] = retrieval_result
+                return result
+            
+            # Step 2: Rerank combined documents
+            final_docs, scores = self._rerank_with_fallback(query, combined_docs, return_scores)
+            
+            # Step 3: Create final context
+            context = "\n\n".join(final_docs)
+            
+            logging.info(f"✅ Pipeline completed: {len(combined_docs)} → {len(final_docs)} final docs")
+            
+            # Build result
+            result = {
+                "context": context,
+                "query": query,
+                "num_retrieved": len(combined_docs),
+                "num_final": len(final_docs),
+                "final_documents": final_docs
+            }
+            
+            if return_scores:
+                result["rerank_scores"] = scores
+            
+            if return_intermediate:
+                result["retrieval_result"] = retrieval_result
+                result["combined_documents"] = combined_docs
+            
+            return result
+            
         except Exception as e:
-            logging.error(f"❌ Pipeline failed: {e}")
+            logging.error(f"❌ Sync pipeline failed: {e}")
             return {
                 "context": "",
                 "query": query,

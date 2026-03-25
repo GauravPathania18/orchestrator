@@ -52,8 +52,12 @@ class ResourceError(RaptorError):
         self.resource = resource
 
 def handle_exception(func):
-    """Decorator for comprehensive error handling"""
-    def wrapper(*args, **kwargs):
+    """Decorator for comprehensive error handling - supports both sync and async functions."""
+    import asyncio
+    import functools
+
+    @functools.wraps(func)
+    def sync_wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except RaptorError as e:
@@ -65,7 +69,25 @@ def handle_exception(func):
             logging.error(f"Unexpected error in {func.__name__}: {str(e)}")
             logging.error(f"Traceback: {traceback.format_exc()}")
             return create_error_response("unknown", str(e), {"function": func.__name__})
-    return wrapper
+
+    @functools.wraps(func)
+    async def async_wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except RaptorError as e:
+            logging.error(f"RAPTOR Error [{e.error_type.value}]: {e.message}")
+            if e.details:
+                logging.error(f"Details: {e.details}")
+            return create_error_response(e.error_type.value, e.message, e.details)
+        except Exception as e:
+            logging.error(f"Unexpected error in {func.__name__}: {str(e)}")
+            logging.error(f"Traceback: {traceback.format_exc()}")
+            return create_error_response("unknown", str(e), {"function": func.__name__})
+
+    # Return async wrapper if function is async, sync wrapper otherwise
+    if asyncio.iscoroutinefunction(func):
+        return async_wrapper
+    return sync_wrapper
 
 def create_error_response(error_type: str, message: str, details: Optional[Dict] = None) -> Dict[str, Any]:
     """Create standardized error response"""
@@ -143,16 +165,16 @@ class CircuitBreaker:
         self.last_failure_time = None
         self.state = "closed"  # closed, open, half-open
     
-    def call(self, func, *args, **kwargs):
-        """Execute function with circuit breaker protection"""
+    async def call(self, func, *args, **kwargs):
+        """Execute async function with circuit breaker protection."""
         if self.state == "open":
             if self._should_attempt_reset():
                 self.state = "half-open"
             else:
-                raise ConnectionError("Circuit breaker is open", "circuit_breaker")
-        
+                raise ConnectionError("Circuit breaker is open", func.__name__)
+
         try:
-            result = func(*args, **kwargs)
+            result = await func(*args, **kwargs)
             self._on_success()
             return result
         except Exception as e:

@@ -2,8 +2,8 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime
 import uuid
-import numpy as np
 
+from .utils import cosine_similarity
 from .raptor_client import raptor_client
 from .short_term_memory import session_manager
 from .ollama_client import generate_response
@@ -15,19 +15,6 @@ from app.services.memory.memory_selector import select_top_memories
 from app.services.memory.context_builder import build_structured_context
 from app.services.memory.memory_reinforcement import reinforce_memory
 from app.services.memory.memory_decay import apply_decay
-
-
-# -----------------------------
-# COSINE SIMILARITY
-# -----------------------------
-def cosine_similarity(a, b):
-    a = np.array(a)
-    b = np.array(b)
-
-    if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
-        return 0.0
-
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
 # -----------------------------
@@ -129,42 +116,64 @@ async def run_enhanced_rag(
             )
 
             if raptor_result.get("status") == "success":
-                data = raptor_result["data"]
+                data = raptor_result.get("data", {})
+                
+                # Defensive: log contract breaks
+                if not data:
+                    logging.warning("RAPTOR returned empty data block — check vector store response")
+                
+                # Correct key is "final_documents", not "chunks" or "summaries"
+                final_docs = data.get("final_documents", [])
+                
+                if not final_docs:
+                    logging.warning(f"RAPTOR retrieved 0 docs. Full response keys: {list(data.keys())}")
+                    use_raptor = False
+                else:
+                    # RAPTOR docs are already ranked by similarity from vector store
+                    # Prefer real scores if available, otherwise use position-based
+                    for i, doc in enumerate(final_docs):
+                        # Extract score from doc if it's a dict with score info
+                        score = None
+                        
+                        if isinstance(doc, dict):
+                            # Prefer explicit similarity score if available
+                            if "score" in doc:
+                                score = doc["score"]
+                            # Convert distance to similarity (lower distance = higher relevance)
+                            elif "distance" in doc:
+                                score = 1.0 - doc["distance"]
+                            # Use document text for storage
+                            doc_text = doc.get("text", doc.get("document", str(doc)))
+                        else:
+                            doc_text = doc
+                        
+                        # Fall back to position-based scoring (1.0 → 0.0)
+                        # This acknowledges we don't have real similarity, just ranking
+                        if score is None:
+                            score = 1.0 - (i / max(len(final_docs), 1))
+                        
+                        raptor_docs.append({
+                            "document": doc_text,
+                            "metadata": {
+                                "id": str(uuid.uuid4()),
+                                "type": "knowledge",
+                                "category": "general",
+                                "value": doc_text,
+                                "confidence": 0.8,
+                                "importance": 0.8,
+                                "source": "raptor",
+                                "created_at": datetime.now().isoformat(),
+                                "last_accessed": datetime.now().isoformat()
+                            },
+                            "similarity": score,  # Real score, distance-converted, or position-based
+                            "embedding": None  # Not stored to save memory
+                        })
 
-                chunks = data.get("chunks", [])
-                summaries = data.get("summaries", [])
-
-                for doc in summaries + chunks:
-                    try:
-                        emb = await get_embedding(doc)
-                    except Exception:
-                        emb = None
-
-                    sim = 0.5
-                    if emb and query_embedding:
-                        sim = cosine_similarity(query_embedding, emb)
-
-                    raptor_docs.append({
-                        "document": doc,
-                        "metadata": {
-                            "id": str(uuid.uuid4()),
-                            "type": "knowledge",
-                            "category": "general",
-                            "value": doc,
-                            "confidence": 0.8,
-                            "importance": 0.8,
-                            "source": "raptor",
-                            "created_at": datetime.now().isoformat(),
-                            "last_accessed": datetime.now().isoformat()
-                        },
-                        "similarity": sim,
-                        "embedding": emb
-                    })
-
-                retrieval_info = {
-                    "type": "raptor",
-                    "num_retrieved": len(raptor_docs)
-                }
+                    retrieval_info = {
+                        "type": "raptor",
+                        "num_retrieved": len(final_docs),
+                        "num_final": data.get("num_final", len(final_docs))
+                    }
 
             else:
                 use_raptor = False

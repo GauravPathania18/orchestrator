@@ -14,13 +14,13 @@ echo Press Ctrl+C to stop a service, or close the terminal window
 echo.
 pause
 
-start "Embedder Service (8000)" cmd /k "cd personal_LLM_embedder && .venv\Scripts\activate.bat && python embedder_api.py"
+start "Embedder Service (8000)" cmd /k ".venv\Scripts\activate.bat && cd personal_LLM_embedder && python embedder_api.py"
 timeout /t 5 /nobreak >nul
 
-start "Vector Storage (8001)" cmd /k "cd VECTOR_STORAGE_SERVICE && .venv\Scripts\activate.bat && python -m uvicorn app.main:app --host 0.0.0.0 --port 8001"
+start "Vector Storage (8001)" cmd /k ".venv\Scripts\activate.bat && cd VECTOR_STORAGE_SERVICE && python -m uvicorn app.main:app --host 0.0.0.0 --port 8001"
 timeout /t 5 /nobreak >nul
 
-start "Backend Orchestrator (8002)" cmd /k "cd Backend && .venv\Scripts\activate.bat && python -m uvicorn app.main:app --host 0.0.0.0 --port 8002"
+start "Backend Orchestrator (8002)" cmd /k ".venv\Scripts\activate.bat && cd Backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8002"
 
 echo.
 echo ==========================================
